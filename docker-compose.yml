@@ -1,0 +1,139 @@
+x-logging:
+  &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 100M
+
+services:
+  # ─── Judge0 CE ───────────────────────────────────────
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    ports:
+      - "2358:2358"
+    privileged: true
+    <<: *default-logging
+    restart: always
+    depends_on:
+      judge0-db:
+        condition: service_started
+      judge0-redis:
+        condition: service_started
+
+  judge0-workers:
+    image: judge0/judge0:1.13.1
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    privileged: true
+    <<: *default-logging
+    restart: always
+    depends_on:
+      judge0-server:
+        condition: service_started
+
+  judge0-db:
+    image: postgres:16.2
+    env_file: judge0.conf
+    volumes:
+      - judge0-data:/var/lib/postgresql/data/
+    <<: *default-logging
+    restart: always
+
+  judge0-redis:
+    image: redis:7.2.4
+    command:
+      [
+        "bash", "-c",
+        'docker-entrypoint.sh --appendonly no --requirepass "$$REDIS_PASSWORD"',
+      ]
+    env_file: judge0.conf
+    <<: *default-logging
+    restart: always
+
+  # ─── Platform Database (MySQL 8) ─────────────────────
+  platform-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: codeassess_root
+      MYSQL_DATABASE: codeassess
+      MYSQL_USER: codeassess
+      MYSQL_PASSWORD: codeassess_secret
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - platform-mysql-data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+    <<: *default-logging
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "codeassess", "-pcodeassess_secret"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── Platform Redis ──────────────────────────────────
+  platform-redis:
+    image: redis:7.2.4
+    command: ["redis-server", "--requirepass", "codeassess_redis_secret"]
+    ports:
+      - "6380:6379"
+    <<: *default-logging
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "codeassess_redis_secret", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend (NestJS) ───────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      DB_HOST: platform-db
+      DB_PORT: 3306
+      DB_USERNAME: codeassess
+      DB_PASSWORD: codeassess_secret
+      DB_NAME: codeassess
+      REDIS_HOST: platform-redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: codeassess_redis_secret
+      JWT_SECRET: super-secret-jwt-key-change-in-production-2024
+      JWT_EXPIRATION: 24h
+      JUDGE0_API_URL: http://judge0-server:2358
+      JUDGE0_API_KEY: ""
+    <<: *default-logging
+    restart: always
+    depends_on:
+      platform-db:
+        condition: service_healthy
+      platform-redis:
+        condition: service_healthy
+      judge0-server:
+        condition: service_started
+
+  # ─── Frontend (Next.js) ─────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+    <<: *default-logging
+    restart: always
+    depends_on:
+      - backend
+
+volumes:
+  judge0-data:
+  platform-mysql-data:
