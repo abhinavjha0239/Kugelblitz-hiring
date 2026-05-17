@@ -24,15 +24,18 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 255, nullable: true })
   @Exclude()
-  password: string;
+  password: string | null;
 
-  @Column({ name: 'first_name' })
-  firstName: string;
+  @Column({ type: 'varchar', length: 100, name: 'first_name', nullable: true })
+  firstName: string | null;
 
-  @Column({ name: 'last_name' })
-  lastName: string;
+  @Column({ type: 'varchar', length: 100, name: 'last_name', nullable: true })
+  lastName: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  mobile: string | null;
 
   @Column({ type: 'enum', enum: UserRole, default: UserRole.STUDENT })
   role: UserRole;
@@ -42,6 +45,9 @@ export class User {
 
   @Column({ default: false, name: 'force_password_reset' })
   forcePasswordReset: boolean;
+
+  @Column({ default: false, name: 'profile_complete' })
+  profileComplete: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

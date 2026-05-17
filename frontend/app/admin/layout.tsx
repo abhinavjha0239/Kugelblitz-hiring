@@ -50,10 +50,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="p-4 border-t border-slate-700/20">
           <div className="flex items-center gap-3 mb-3 px-2">
             <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center text-sm font-bold text-white">
-              {user.firstName[0]}
+              {(user.firstName || user.email || 'A')[0].toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-200 truncate">{user.firstName} {user.lastName}</p>
+              <p className="text-sm font-medium text-slate-200 truncate">{user.firstName || ''} {user.lastName || ''}</p>
               <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
             </div>
           </div>

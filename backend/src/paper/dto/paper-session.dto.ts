@@ -1,20 +1,16 @@
-import { IsObject, IsOptional, IsUUID } from 'class-validator';
+import { IsObject, IsOptional } from 'class-validator';
+
+// paperId comes from the URL — body should not duplicate it. Including the
+// field in the body let a malicious autosave target a paper different from
+// the URL. Both DTOs accept only `answers`.
 
 export class SubmitPaperDto {
-  @IsUUID()
-  @IsOptional()
-  paperId: string;
-
   @IsObject()
   @IsOptional()
   answers?: Record<string, string>;
 }
 
 export class AutosavePaperAnswersDto {
-  @IsUUID()
-  paperId: string;
-
   @IsObject()
   answers: Record<string, string>;
 }
-

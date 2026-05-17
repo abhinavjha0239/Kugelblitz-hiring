@@ -31,7 +31,7 @@ export class McqResponse {
   @Index()
   userId: string;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
 
@@ -39,7 +39,7 @@ export class McqResponse {
   @Index()
   questionId: string;
 
-  @ManyToOne(() => Question)
+  @ManyToOne(() => Question, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'question_id' })
   question: Question;
 

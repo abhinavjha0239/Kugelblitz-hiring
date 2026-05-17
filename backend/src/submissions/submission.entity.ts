@@ -29,7 +29,7 @@ export class Submission {
   @Index()
   userId: string;
 
-  @ManyToOne(() => User, (u) => u.submissions)
+  @ManyToOne(() => User, (u) => u.submissions, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
 
@@ -37,7 +37,7 @@ export class Submission {
   @Index()
   questionId: string;
 
-  @ManyToOne(() => Question, (q) => q.submissions)
+  @ManyToOne(() => Question, (q) => q.submissions, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'question_id' })
   question: Question;
 
@@ -45,7 +45,7 @@ export class Submission {
   @Index()
   testId: string;
 
-  @ManyToOne(() => Test)
+  @ManyToOne(() => Test, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'test_id' })
   test: Test;
 

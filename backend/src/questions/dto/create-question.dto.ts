@@ -18,6 +18,10 @@ export class McqOptionDto {
 
   @IsString()
   text: string;
+
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
 }
 
 export class CreateTestCaseDto {
@@ -67,6 +71,11 @@ export class CreateQuestionDto {
   allowedLanguages?: number[];
 
   @IsArray()
+  @IsOptional()
+  @IsString({ each: true })
+  imageUrls?: string[];
+
+  @IsArray()
   @ValidateNested({ each: true })
   @Type(() => McqOptionDto)
   @IsOptional()
@@ -112,6 +121,11 @@ export class UpdateQuestionDto {
   @IsArray()
   @IsOptional()
   allowedLanguages?: number[];
+
+  @IsArray()
+  @IsOptional()
+  @IsString({ each: true })
+  imageUrls?: string[];
 
   @IsArray()
   @ValidateNested({ each: true })

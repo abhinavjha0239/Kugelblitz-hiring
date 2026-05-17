@@ -14,6 +14,11 @@ import { Paper } from '../paper/paper.entity';
 import { PaperQuestion } from '../paper/paper-question.entity';
 import { StudentPaperSession } from '../paper/student-paper-session.entity';
 import { PaperModule } from '../paper/paper.module';
+import { MagicLinkModule } from '../magic-link/magic-link.module';
+import { MagicLink } from '../magic-link/magic-link.entity';
+import { MonitoringModule } from '../monitoring/monitoring.module';
+import { ExamSetModule } from '../exam-set/exam-set.module';
+import { SebModule } from '../seb/seb.module';
 
 @Module({
   imports: [
@@ -28,9 +33,14 @@ import { PaperModule } from '../paper/paper.module';
       Paper,
       PaperQuestion,
       StudentPaperSession,
+      MagicLink,
     ]),
     QueueModule,
     PaperModule,
+    MagicLinkModule,
+    MonitoringModule,
+    ExamSetModule,
+    SebModule,
   ],
   controllers: [TestSessionController],
   providers: [TestSessionService],

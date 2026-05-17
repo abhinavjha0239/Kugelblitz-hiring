@@ -13,6 +13,7 @@ import {
 import { Test } from '../tests/test.entity';
 import { PaperQuestion } from './paper-question.entity';
 import { StudentPaperSession } from './student-paper-session.entity';
+import { decimalTransformer } from '../common/db/decimal-transformer';
 
 @Entity('papers')
 @Unique('uq_exam_order', ['examId', 'order'])
@@ -42,6 +43,28 @@ export class Paper {
 
   @Column({ type: 'boolean', name: 'pass_required', default: false })
   passRequired: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: ['percent', 'marks', 'none'],
+    default: 'none',
+    name: 'cutoff_type',
+  })
+  cutoffType: 'percent' | 'marks' | 'none';
+
+  @Column({ type: 'decimal', precision: 7, scale: 2, default: 0, name: 'cutoff_value', transformer: decimalTransformer })
+  cutoffValue: number;
+
+  @Column({
+    type: 'enum',
+    enum: ['end_exam', 'lock_next', 'none'],
+    default: 'lock_next',
+    name: 'cutoff_fail_behavior',
+  })
+  cutoffFailBehavior: 'end_exam' | 'lock_next' | 'none';
+
+  @Column({ type: 'int', default: 0, name: 'total_marks' })
+  totalMarks: number;
 
   @OneToMany(() => PaperQuestion, (pq) => pq.paper)
   questionLinks: PaperQuestion[];

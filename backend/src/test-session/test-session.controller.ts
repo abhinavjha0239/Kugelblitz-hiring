@@ -21,12 +21,13 @@ import {
 import { AutosavePaperAnswersDto, SubmitPaperDto } from '../paper/dto/paper-session.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { SebGuard } from '../common/guards/seb.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../users/user.entity';
 
 @Controller('test-session')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, SebGuard)
 export class TestSessionController {
   constructor(private testSessionService: TestSessionService) {}
 

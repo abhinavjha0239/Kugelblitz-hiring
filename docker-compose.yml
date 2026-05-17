@@ -110,6 +110,18 @@ services:
       JWT_EXPIRATION: 24h
       JUDGE0_API_URL: http://judge0-server:2358
       JUDGE0_API_KEY: ""
+      # ─── SMTP (bulk magic-link delivery) ──────────────────
+      # Single mailbox example. Add SMTP_USER_2 / SMTP_PASS_2 / MAIL_FROM_2 etc
+      # for round-robin across multiple mailboxes (Microsoft 365 limit is ~30/min/mailbox).
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      MAIL_FROM: ""
+      SMTP_RATE_PER_MINUTE: "30"
+      SMTP_POOL_MAX_CONNECTIONS: "5"
+      MAIL_WORKER_CONCURRENCY: "10"
+      APP_BASE_URL: "http://localhost:3000"
     <<: *default-logging
     restart: always
     depends_on:

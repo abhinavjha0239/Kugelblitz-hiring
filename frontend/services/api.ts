@@ -3,6 +3,12 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 const axiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api',
   headers: { 'Content-Type': 'application/json' },
+  // Without an explicit timeout, axios waits forever — silently. Inside
+  // a kiosk-mode browser (Safe Exam Browser) the candidate is then stuck
+  // on a spinner with no way to recover. 30s is generous for any real
+  // call (most return in <1s) and short enough that a stuck candidate
+  // gets a visible error rather than an indefinite freeze.
+  timeout: 30_000,
 });
 
 axiosInstance.interceptors.request.use((config) => {
@@ -24,7 +30,13 @@ axiosInstance.interceptors.response.use(
       window.location.href = '/login';
     }
     const message = error.response?.data?.message || error.message || 'Something went wrong';
-    return Promise.reject(new Error(Array.isArray(message) ? message.join(', ') : message));
+    const err = new Error(Array.isArray(message) ? message.join(', ') : message) as Error & {
+      errors?: any;
+      statusCode?: number;
+    };
+    err.errors = error.response?.data?.errors;
+    err.statusCode = error.response?.status;
+    return Promise.reject(err);
   },
 );
 

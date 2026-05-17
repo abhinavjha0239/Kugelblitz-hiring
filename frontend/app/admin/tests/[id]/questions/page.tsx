@@ -7,7 +7,8 @@ import { testsService } from '@/services/tests.service';
 import { questionsService } from '@/services/questions.service';
 import { paperService } from '@/services/paper.service';
 import { Test, Question, LANGUAGES } from '@/types';
-import { ArrowLeft, Plus, Trash2, Code, ListChecks, Save } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Code, ListChecks, Save, Mail, ImagePlus, X, Layers, Pencil } from 'lucide-react';
+import { uploadsService } from '@/services/uploads.service';
 
 export default function QuestionsPage() {
   const { id: testId } = useParams<{ id: string }>();
@@ -18,11 +19,18 @@ export default function QuestionsPage() {
   const [form, setForm] = useState({
     title: '', description: '', marks: 10, orderIndex: 0,
     allowedLanguages: [71, 63, 54, 62],
-    mcqOptions: [{ id: 'a', text: '' }, { id: 'b', text: '' }, { id: 'c', text: '' }, { id: 'd', text: '' }],
+    imageUrls: [] as string[],
+    mcqOptions: [
+      { id: 'a', text: '', imageUrl: '' as string | undefined },
+      { id: 'b', text: '', imageUrl: '' as string | undefined },
+      { id: 'c', text: '', imageUrl: '' as string | undefined },
+      { id: 'd', text: '', imageUrl: '' as string | undefined },
+    ],
     mcqCorrectAnswer: 'a',
     testCases: [{ input: '', expectedOutput: '', isHidden: false }],
   });
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [papers, setPapers] = useState<any[]>([]);
   const [newPaper, setNewPaper] = useState({
     name: 'Paper 1',
@@ -76,29 +84,76 @@ export default function QuestionsPage() {
     }
   };
 
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({
+      title: '', description: '', marks: 10, orderIndex: 0,
+      allowedLanguages: [71, 63, 54, 62],
+      imageUrls: [],
+      mcqOptions: [
+        { id: 'a', text: '', imageUrl: '' },
+        { id: 'b', text: '', imageUrl: '' },
+        { id: 'c', text: '', imageUrl: '' },
+        { id: 'd', text: '', imageUrl: '' },
+      ],
+      mcqCorrectAnswer: 'a',
+      testCases: [{ input: '', expectedOutput: '', isHidden: false }],
+    });
+  };
+
+  const startEdit = (q: Question) => {
+    setEditingId(q.id);
+    setFormType(q.type);
+    const baseOptions = ['a', 'b', 'c', 'd'].map((id) => {
+      const existing = q.mcqOptions?.find((o) => o.id === id);
+      return { id, text: existing?.text ?? '', imageUrl: (existing?.imageUrl ?? '') as string | undefined };
+    });
+    setForm({
+      title: q.title,
+      description: q.description,
+      marks: Number(q.marks) || 10,
+      orderIndex: q.orderIndex || 0,
+      allowedLanguages: q.allowedLanguages || [71, 63, 54, 62],
+      imageUrls: q.imageUrls || [],
+      mcqOptions: baseOptions,
+      mcqCorrectAnswer: q.mcqCorrectAnswer || 'a',
+      testCases: (q.testCases && q.testCases.length > 0)
+        ? q.testCases.map(tc => ({ input: tc.input, expectedOutput: tc.expectedOutput, isHidden: tc.isHidden }))
+        : [{ input: '', expectedOutput: '', isHidden: false }],
+    });
+    setShowForm(true);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
+      // Build common fields. `type` is set only on CREATE — it can't change after.
       const data: any = {
-        testId,
-        type: formType,
         title: form.title,
         description: form.description,
         marks: form.marks,
-        orderIndex: questions.length,
+        orderIndex: editingId ? form.orderIndex : questions.length,
         allowedLanguages: form.allowedLanguages,
+        imageUrls: form.imageUrls,
       };
       if (formType === 'mcq') {
-        data.mcqOptions = form.mcqOptions.filter(o => o.text.trim());
+        data.mcqOptions = form.mcqOptions
+          .filter(o => o.text.trim() || o.imageUrl)
+          .map(o => ({ id: o.id, text: o.text, ...(o.imageUrl ? { imageUrl: o.imageUrl } : {}) }));
         data.mcqCorrectAnswer = form.mcqCorrectAnswer;
-      } else {
+      } else if (!editingId) {
         data.testCases = form.testCases.filter(tc => tc.input.trim() || tc.expectedOutput.trim());
       }
-      await questionsService.create(data);
-      toast.success('Question added!');
+      if (editingId) {
+        await questionsService.update(editingId, data);
+        toast.success('Question updated');
+      } else {
+        await questionsService.create({ ...data, testId, type: formType });
+        toast.success('Question added');
+      }
       setShowForm(false);
-      setForm({ title: '', description: '', marks: 10, orderIndex: 0, allowedLanguages: [71, 63, 54, 62], mcqOptions: [{ id: 'a', text: '' }, { id: 'b', text: '' }, { id: 'c', text: '' }, { id: 'd', text: '' }], mcqCorrectAnswer: 'a', testCases: [{ input: '', expectedOutput: '', isHidden: false }] });
+      resetForm();
       loadData();
     } catch (err: any) { toast.error(err.message); }
     finally { setSaving(false); }
@@ -119,6 +174,34 @@ export default function QuestionsPage() {
     setForm(p => ({ ...p, mcqOptions: p.mcqOptions.map((o, i) => i === idx ? { ...o, text } : o) }));
   };
 
+  const uploadDescriptionImage = async (file: File) => {
+    try {
+      const r = await uploadsService.uploadImage(file);
+      setForm(p => ({ ...p, imageUrls: [...p.imageUrls, r.url] }));
+      toast.success('Image uploaded');
+    } catch (err: any) {
+      toast.error(err.message || 'Image upload failed');
+    }
+  };
+
+  const removeDescriptionImage = (idx: number) => {
+    setForm(p => ({ ...p, imageUrls: p.imageUrls.filter((_, i) => i !== idx) }));
+  };
+
+  const uploadOptionImage = async (idx: number, file: File) => {
+    try {
+      const r = await uploadsService.uploadImage(file);
+      setForm(p => ({ ...p, mcqOptions: p.mcqOptions.map((o, i) => i === idx ? { ...o, imageUrl: r.url } : o) }));
+      toast.success('Option image uploaded');
+    } catch (err: any) {
+      toast.error(err.message || 'Image upload failed');
+    }
+  };
+
+  const removeOptionImage = (idx: number) => {
+    setForm(p => ({ ...p, mcqOptions: p.mcqOptions.map((o, i) => i === idx ? { ...o, imageUrl: '' } : o) }));
+  };
+
   return (
     <div className="p-8 max-w-4xl">
       <div className="flex items-center gap-4 mb-8">
@@ -127,66 +210,15 @@ export default function QuestionsPage() {
           <h1 className="text-2xl font-bold">{test?.title || 'Loading...'}</h1>
           <p className="text-dark-400 text-sm mt-1">Manage questions · {questions.length} questions · {test?.totalMarks || 0} total marks</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2"><Plus className="w-5 h-5" /> Add Question</button>
-      </div>
-
-      <div className="card mb-8">
-        <h2 className="text-lg font-semibold mb-4">Paper Configuration</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-          <input
-            className="input-field"
-            placeholder="Paper name"
-            value={newPaper.name}
-            onChange={(e) => setNewPaper((p) => ({ ...p, name: e.target.value }))}
-          />
-          <input
-            className="input-field"
-            type="number"
-            min={1}
-            value={newPaper.order}
-            onChange={(e) => setNewPaper((p) => ({ ...p, order: Number(e.target.value) }))}
-          />
-          <input
-            className="input-field"
-            type="number"
-            min={1}
-            value={newPaper.totalQuestions}
-            onChange={(e) => setNewPaper((p) => ({ ...p, totalQuestions: Number(e.target.value) }))}
-          />
-          <input
-            className="input-field"
-            type="number"
-            min={1}
-            value={newPaper.durationMinutes}
-            onChange={(e) => setNewPaper((p) => ({ ...p, durationMinutes: Number(e.target.value) }))}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={handleCreatePaper} className="btn-primary">
-            Create Paper
-          </button>
-          <select
-            className="input-field max-w-xs"
-            value={selectedPaperId}
-            onChange={(e) => setSelectedPaperId(e.target.value)}
-          >
-            <option value="">Select paper</option>
-            {papers.map((paper) => (
-              <option key={paper.id} value={paper.id}>
-                {paper.order}. {paper.name} ({paper.totalQuestions} Q, {paper.durationMinutes}m)
-              </option>
-            ))}
-          </select>
-          <button type="button" onClick={handleMapQuestions} className="btn-secondary">
-            Map All Current Questions To Selected Paper
-          </button>
-        </div>
+        <Link href={`/admin/tests/${testId}/papers`} className="btn-secondary flex items-center gap-2"><Layers className="w-5 h-5" /> Papers</Link>
+        <Link href={`/admin/tests/${testId}/invites`} className="btn-secondary flex items-center gap-2"><Mail className="w-5 h-5" /> Invites</Link>
+        <button onClick={() => { resetForm(); setShowForm(true); }} className="btn-primary flex items-center gap-2"><Plus className="w-5 h-5" /> Add Question</button>
       </div>
 
       {showForm && (
         <form onSubmit={handleCreate} className="card mb-8 space-y-4">
           <div className="flex items-center gap-4 mb-4">
-            <h2 className="text-lg font-semibold">New Question</h2>
+            <h2 className="text-lg font-semibold">{editingId ? 'Edit Question' : 'New Question'}</h2>
             <div className="flex gap-2">
               <button type="button" onClick={() => setFormType('coding')} className={`px-3 py-1 rounded-lg text-sm ${formType === 'coding' ? 'bg-accent text-white' : 'bg-dark-800 text-dark-400'}`}>
                 <Code className="w-4 h-4 inline mr-1" />Coding
@@ -198,6 +230,27 @@ export default function QuestionsPage() {
           </div>
           <input type="text" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} className="input-field" placeholder="Question title" required />
           <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="input-field min-h-[120px]" placeholder="Question description (supports markdown-style formatting)" required />
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-dark-300">Description images ({form.imageUrls.length})</label>
+              <label className="text-sm text-accent hover:text-accent-hover cursor-pointer flex items-center gap-1">
+                <ImagePlus className="w-4 h-4" /> Add image
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadDescriptionImage(f); e.target.value = ''; }} />
+              </label>
+            </div>
+            {form.imageUrls.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {form.imageUrls.map((url, i) => (
+                  <div key={i} className="relative">
+                    <img src={uploadsService.toAbsolute(url)} className="h-24 rounded border border-dark-700" />
+                    <button type="button" onClick={() => removeDescriptionImage(i)} className="absolute -top-2 -right-2 bg-danger text-white rounded-full p-1"><X className="w-3 h-3" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-dark-300 mb-1.5">Marks</label>
@@ -209,10 +262,23 @@ export default function QuestionsPage() {
             <div className="space-y-3">
               <h3 className="text-sm font-medium text-dark-300">Options</h3>
               {form.mcqOptions.map((opt, i) => (
-                <div key={opt.id} className="flex items-center gap-3">
-                  <input type="radio" name="correct" checked={form.mcqCorrectAnswer === opt.id} onChange={() => setForm(p => ({ ...p, mcqCorrectAnswer: opt.id }))} className="w-4 h-4 text-accent" />
-                  <span className="text-sm font-medium w-6">{opt.id.toUpperCase()}.</span>
-                  <input type="text" value={opt.text} onChange={e => updateMcqOption(i, e.target.value)} className="input-field flex-1" placeholder={`Option ${opt.id.toUpperCase()}`} />
+                <div key={opt.id} className="flex items-start gap-3 p-3 bg-dark-800 rounded-lg">
+                  <input type="radio" name="correct" checked={form.mcqCorrectAnswer === opt.id} onChange={() => setForm(p => ({ ...p, mcqCorrectAnswer: opt.id }))} className="w-4 h-4 text-accent mt-2.5" />
+                  <span className="text-sm font-medium w-6 mt-2">{opt.id.toUpperCase()}.</span>
+                  <div className="flex-1 space-y-2">
+                    <input type="text" value={opt.text} onChange={e => updateMcqOption(i, e.target.value)} className="input-field" placeholder={`Option ${opt.id.toUpperCase()} text`} />
+                    {opt.imageUrl ? (
+                      <div className="relative inline-block">
+                        <img src={uploadsService.toAbsolute(opt.imageUrl)} className="h-20 rounded border border-dark-700" />
+                        <button type="button" onClick={() => removeOptionImage(i)} className="absolute -top-2 -right-2 bg-danger text-white rounded-full p-1"><X className="w-3 h-3" /></button>
+                      </div>
+                    ) : (
+                      <label className="text-xs text-accent hover:text-accent-hover cursor-pointer flex items-center gap-1 w-fit">
+                        <ImagePlus className="w-3 h-3" /> Add image to option
+                        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadOptionImage(i, f); e.target.value = ''; }} />
+                      </label>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -242,7 +308,7 @@ export default function QuestionsPage() {
           )}
           <div className="flex gap-3">
             <button type="submit" disabled={saving} className="btn-primary flex items-center gap-2"><Save className="w-4 h-4" />{saving ? 'Saving...' : 'Save Question'}</button>
-            <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={() => { setShowForm(false); resetForm(); }} className="btn-secondary">Cancel</button>
           </div>
         </form>
       )}
@@ -265,7 +331,10 @@ export default function QuestionsPage() {
                   <p className="text-xs text-dark-500 mt-2">{q.testCases.length} test cases ({q.testCases.filter(tc => tc.isHidden).length} hidden)</p>
                 )}
               </div>
-              <button onClick={() => handleDeleteQuestion(q.id)} className="p-2 hover:bg-dark-700 rounded-lg"><Trash2 className="w-4 h-4 text-danger" /></button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => startEdit(q)} className="p-2 hover:bg-dark-700 rounded-lg" title="Edit"><Pencil className="w-4 h-4 text-blue-400" /></button>
+                <button onClick={() => handleDeleteQuestion(q.id)} className="p-2 hover:bg-dark-700 rounded-lg" title="Delete"><Trash2 className="w-4 h-4 text-danger" /></button>
+              </div>
             </div>
           </div>
         ))}

@@ -32,8 +32,12 @@ export class SubmissionsController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.submissionsService.findById(id);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') role: string,
+  ) {
+    return this.submissionsService.findById(id, userId, role);
   }
 
   @Get('user/test/:testId')

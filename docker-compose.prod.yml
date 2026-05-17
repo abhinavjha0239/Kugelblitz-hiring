@@ -1,0 +1,155 @@
+x-logging:
+  &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 50m
+      max-file: "3"
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+    depends_on:
+      - backend
+      - frontend
+    <<: *default-logging
+
+  # DO NOT add a `ports:` block to platform-db or platform-redis. Both must
+  # remain reachable only via the docker network — exposing 3306 / 6379 on
+  # the host binds them to the VM's public IP (34.47.203.1), which is on
+  # the open internet. Containers within the compose talk over the docker
+  # network using service names (`platform-db:3306`, `platform-redis:6379`).
+  platform-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: codeassess
+      MYSQL_USER: codeassess
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    # Tuned for the e2-standard-4 host (16 GB RAM):
+    #   innodb-buffer-pool-size: 6G  → keeps hot tables in memory; previous
+    #     128 MB default forced disk reads on every test/paper/question lookup.
+    #   max-connections: 400         → matches Node cluster (4 × 80 = 320) + headroom.
+    #   innodb-log-file-size: 256M   → bigger redo log smooths write bursts.
+    #   max-allowed-packet: 64M      → larger MCQ batch INSERTs in submitPaper.
+    command: >-
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=6G
+      --max-connections=400
+      --innodb-log-file-size=256M
+      --max-allowed-packet=64M
+      --innodb-flush-log-at-trx-commit=1
+    volumes:
+      - platform-mysql-data:/var/lib/mysql
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "codeassess", "-p${MYSQL_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    <<: *default-logging
+
+  platform-redis:
+    image: redis:7.2.4
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - platform-redis-data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    <<: *default-logging
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      PORT: "4000"
+      NODE_ENV: production
+      DB_TYPE: mysql
+      DB_HOST: platform-db
+      DB_PORT: "3306"
+      DB_USERNAME: codeassess
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      DB_NAME: codeassess
+      REDIS_HOST: platform-redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: 24h
+      JUDGE0_API_URL: http://judge0-server:2358
+      JUDGE0_API_KEY: ""
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+      SMTP_RATE_PER_MINUTE: "100"
+      SMTP_POOL_MAX_CONNECTIONS: "5"
+      MAIL_WORKER_CONCURRENCY: "10"
+      APP_BASE_URL: https://${DOMAIN}
+      CORS_ORIGIN: https://${DOMAIN}
+      SEB_QUIT_PASSWORD_HASH: ${SEB_QUIT_PASSWORD_HASH:-}
+      OPTION_KEY_SECRET: ${OPTION_KEY_SECRET:-}
+      # GCS storage for question/option images.
+      # The host VM's attached service account has objectAdmin on this bucket
+      # (storage-rw scope + IAM grant); the container picks up creds via the
+      # GCE metadata server (Application Default Credentials), no key files.
+      GCS_BUCKET: kugelblitz-hiring-uploads
+      GCS_PROJECT_ID: reel-494209
+      # Cluster mode: fork workers across CPU cores. e2-standard-4 has 4
+      # vCPUs; default `WORKERS` to that count. Each worker has its own
+      # MySQL pool (TypeORM connectionLimit=80), so 4 × 80 = 320 connections
+      # — under the 400 we configured on platform-db.
+      NODE_CLUSTER: "true"
+      WORKERS: "4"
+    volumes:
+      # Kept as a fallback for any pre-GCS uploads still referenced by old
+      # questions. New uploads go straight to GCS and never touch this volume.
+      - backend-uploads:/app/uploads
+    depends_on:
+      platform-db: { condition: service_healthy }
+      platform-redis: { condition: service_healthy }
+    # Run with no Linux capabilities and disallow privilege escalation. The
+    # backend listens on 4000 (>1024, no CAP_NET_BIND_SERVICE needed), runs
+    # JavaScript only, never exec()s setuid binaries. If a process ever
+    # escapes the node sandbox it lands in a zero-capability container.
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    <<: *default-logging
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://${DOMAIN}/api
+    restart: always
+    depends_on:
+      - backend
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    <<: *default-logging
+
+volumes:
+  platform-mysql-data:
+  platform-redis-data:
+  backend-uploads:
+  caddy-data:
+  caddy-config:

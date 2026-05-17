@@ -52,3 +52,4 @@ Thumbs.db
 backend/uploads/*
 !backend/uploads/.gitkeep
 frontend/out/
+*.tsbuildinfo

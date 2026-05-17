@@ -4,6 +4,10 @@ export interface User {
   firstName: string;
   lastName: string;
   role: 'admin' | 'student';
+  // Set when this session was minted by a magic-link invite. Locks the
+  // candidate to a single test on both server (InviteScopeGuard) and
+  // client (layout redirects). Absent for admin / password-based logins.
+  inviteScope?: { testId: string; lockedToTest: true };
 }
 
 export interface AuthResponse {
@@ -24,6 +28,19 @@ export interface Test {
   questions?: Question[];
   createdAt: string;
   papers?: Paper[];
+  timerMode?: 'overall' | 'per_paper';
+  overallDurationMinutes?: number;
+  timeCarryOver?: boolean;
+  // Legacy section-based fields (preserved for backward compat with old tests).
+  hasSections?: boolean;
+  mcqCutoffPercent?: number;
+  mcqTimeMinutes?: number;
+  codingTimeMinutes?: number;
+  negativeMarkValue?: number;
+  // Safe Exam Browser lockdown
+  requireSafeExamBrowser?: boolean;
+  sebQuitUrl?: string | null;
+  sebExtraProhibitedProcesses?: string | null;
 }
 
 export interface Paper {
@@ -34,6 +51,10 @@ export interface Paper {
   totalQuestions: number;
   durationMinutes: number;
   passRequired: boolean;
+  cutoffType?: 'percent' | 'marks' | 'none';
+  cutoffValue?: number;
+  cutoffFailBehavior?: 'end_exam' | 'lock_next' | 'none';
+  totalMarks?: number;
 }
 
 export interface ExamPaperStatus {
@@ -48,6 +69,9 @@ export interface ExamPaperStatus {
   startedAt: string | null;
   submittedAt: string | null;
   remainingSeconds: number | null;
+  totalMarks?: number;
+  score?: number;
+  cutoffPassed?: boolean | null;
 }
 
 export interface Question {
@@ -59,8 +83,10 @@ export interface Question {
   marks: number;
   orderIndex: number;
   allowedLanguages: number[];
-  mcqOptions: { id: string; text: string }[] | null;
-  mcqCorrectAnswer: string | null;
+  imageUrls?: string[] | null;
+  mcqOptions: { id: string; text: string; imageUrl?: string }[] | null;
+  // Only populated on admin endpoints — always null/absent for students.
+  mcqCorrectAnswer?: string | null;
   testCases: TestCase[];
 }
 

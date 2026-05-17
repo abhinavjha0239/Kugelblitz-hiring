@@ -16,6 +16,13 @@ export enum ViolationType {
   COPY_PASTE = 'copy_paste',
   RAPID_ANSWER = 'rapid_answer',
   MULTIPLE_IP = 'multiple_ip',
+  SEB_HEADER_MISSING = 'seb_header_missing',
+  SEB_HEADER_MISMATCH = 'seb_header_mismatch',
+  SEB_PREFLIGHT_FAILED = 'seb_preflight_failed',
+  // Magic-link candidate tried to access a different candidate's test —
+  // URL-bar manipulation, forged testId in body, stolen .seb file, etc.
+  // Logged by InviteScopeGuard.
+  OUT_OF_SCOPE_ACCESS = 'out_of_scope_access',
 }
 
 @Entity('violation_logs')
@@ -24,19 +31,22 @@ export class ViolationLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'participation_id' })
+  // Nullable: violations like OUT_OF_SCOPE_ACCESS can fire before the
+  // candidate has a participation row (they hit a guarded URL the moment
+  // they receive the JWT).
+  @Column({ name: 'participation_id', nullable: true })
   @Index()
-  participationId: string;
+  participationId: string | null;
 
-  @ManyToOne(() => TestParticipation, { onDelete: 'CASCADE' })
+  @ManyToOne(() => TestParticipation, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'participation_id' })
-  participation: TestParticipation;
+  participation: TestParticipation | null;
 
   @Column({ name: 'user_id' })
   @Index()
   userId: string;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
 

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -10,6 +11,7 @@ import { Submission, SubmissionStatus } from './submission.entity';
 import { CreateSubmissionDto, RunCodeDto } from './dto/create-submission.dto';
 import { SubmissionProducer } from '../queue/submission.producer';
 import { Judge0Service } from '../judge0/judge0.service';
+import { UserRole } from '../users/user.entity';
 
 @Injectable()
 export class SubmissionsService {
@@ -55,12 +57,16 @@ export class SubmissionsService {
     return this.judge0Service.runCode(dto.sourceCode, dto.languageId, dto.stdin);
   }
 
-  async findById(id: string): Promise<Submission> {
+  async findById(id: string, requesterId?: string, requesterRole?: string): Promise<Submission> {
     const submission = await this.submissionsRepo.findOne({
       where: { id },
       relations: ['user', 'question'],
     });
     if (!submission) throw new NotFoundException('Submission not found');
+    // Ownership / role check: only the owner or an admin may read.
+    if (requesterId && requesterRole !== UserRole.ADMIN && submission.userId !== requesterId) {
+      throw new ForbiddenException('You do not have access to this submission');
+    }
     return submission;
   }
 

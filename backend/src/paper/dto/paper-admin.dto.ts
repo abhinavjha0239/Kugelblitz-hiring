@@ -2,13 +2,18 @@ import {
   ArrayUnique,
   IsArray,
   IsBoolean,
+  IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Max,
   Min,
 } from 'class-validator';
+
+export type CutoffType = 'percent' | 'marks' | 'none';
+export type CutoffFailBehavior = 'end_exam' | 'lock_next' | 'none';
 
 export class CreatePaperDto {
   @IsUUID()
@@ -34,6 +39,19 @@ export class CreatePaperDto {
   @IsBoolean()
   @IsOptional()
   passRequired?: boolean;
+
+  @IsEnum(['percent', 'marks', 'none'])
+  @IsOptional()
+  cutoffType?: CutoffType;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  cutoffValue?: number;
+
+  @IsEnum(['end_exam', 'lock_next', 'none'])
+  @IsOptional()
+  cutoffFailBehavior?: CutoffFailBehavior;
 }
 
 export class UpdatePaperDto {
@@ -61,6 +79,19 @@ export class UpdatePaperDto {
   @IsBoolean()
   @IsOptional()
   passRequired?: boolean;
+
+  @IsEnum(['percent', 'marks', 'none'])
+  @IsOptional()
+  cutoffType?: CutoffType;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  cutoffValue?: number;
+
+  @IsEnum(['end_exam', 'lock_next', 'none'])
+  @IsOptional()
+  cutoffFailBehavior?: CutoffFailBehavior;
 }
 
 export class SetPaperQuestionsDto {

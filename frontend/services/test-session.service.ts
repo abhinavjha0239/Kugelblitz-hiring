@@ -1,8 +1,21 @@
 import api from './api';
 
+// In-flight request dedupe for idempotent start-* endpoints. StrictMode
+// double-mounts and React 19 transition retries can fire the same call
+// twice within milliseconds; without this they pile up on the backend lock
+// and waste a round trip. Keyed by URL, cleared when the call settles.
+const inflight = new Map<string, Promise<any>>();
+function singleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inflight.get(key);
+  if (existing) return existing as Promise<T>;
+  const p = fn().finally(() => { inflight.delete(key); });
+  inflight.set(key, p);
+  return p;
+}
+
 export const testSessionService = {
   async startTest(testId: string) {
-    return api.post(`/test-session/start/${testId}`);
+    return singleFlight(`startTest:${testId}`, () => api.post(`/test-session/start/${testId}`));
   },
 
   async getStatus(testId: string) {
@@ -14,7 +27,7 @@ export const testSessionService = {
   },
 
   async submitMcqSection(testId: string) {
-    return api.post('/test-session/mcq/submit', { testId });
+    return singleFlight(`submitMcq:${testId}`, () => api.post('/test-session/mcq/submit', { testId }));
   },
 
   async submitCoding(data: { testId: string; questionId: string; languageId: number; sourceCode: string }) {
@@ -22,7 +35,12 @@ export const testSessionService = {
   },
 
   async finalSubmit(testId: string, isAutoSubmit = false) {
-    return api.post('/test-session/final-submit', { testId, isAutoSubmit });
+    // Critical: tab-switch auto-submit + timer-tick auto-submit can fire
+    // simultaneously, double-recording score and producing duplicate logs.
+    // Single-flight collapses them.
+    return singleFlight(`finalSubmit:${testId}`, () =>
+      api.post('/test-session/final-submit', { testId, isAutoSubmit }),
+    );
   },
 
   async getTimer(testId: string) {
@@ -34,19 +52,23 @@ export const testSessionService = {
   },
 
   async startExam(testId: string) {
-    return api.post(`/test-session/student/start-exam/${testId}`);
+    return singleFlight(`startExam:${testId}`, () => api.post(`/test-session/student/start-exam/${testId}`));
   },
 
   async startPaper(paperId: string) {
-    return api.post(`/test-session/student/start-paper/${paperId}`);
+    return singleFlight(`startPaper:${paperId}`, () => api.post(`/test-session/student/start-paper/${paperId}`));
   },
 
   async submitPaper(paperId: string, answers: Record<string, string>) {
-    return api.post(`/test-session/student/submit-paper/${paperId}`, { paperId, answers });
+    // Backend DTO uses forbidNonWhitelisted — sending paperId in body
+    // (already present in URL) trips the validator. Body carries only answers.
+    return singleFlight(`submitPaper:${paperId}`, () =>
+      api.post(`/test-session/student/submit-paper/${paperId}`, { answers }),
+    );
   },
 
   async autosavePaperAnswers(paperId: string, answers: Record<string, string>) {
-    return api.post(`/test-session/student/paper/${paperId}/autosave`, { paperId, answers });
+    return api.post(`/test-session/student/paper/${paperId}/autosave`, { answers });
   },
 
   async getExamStatus(testId: string) {

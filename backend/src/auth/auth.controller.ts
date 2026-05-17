@@ -2,6 +2,7 @@ import { Controller, Post, Body, Get, SetMetadata, UseGuards } from '@nestjs/com
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto, AdminResetPasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -35,7 +36,7 @@ export class AuthController {
   @Roles(UserRole.ADMIN)
   adminResetPassword(
     @CurrentUser('id') adminId: string,
-    @Body() body: { userId: string; newPassword: string },
+    @Body() body: AdminResetPasswordDto,
   ) {
     return this.authService.adminResetPassword(adminId, body.userId, body.newPassword);
   }
@@ -44,7 +45,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   changePassword(
     @CurrentUser('id') userId: string,
-    @Body() body: { currentPassword: string; newPassword: string },
+    @Body() body: ChangePasswordDto,
   ) {
     return this.authService.changePassword(userId, body.currentPassword, body.newPassword);
   }

@@ -78,6 +78,29 @@ export class Test {
   @Column({ type: 'integer', default: 0, name: 'coding_time_minutes' })
   codingTimeMinutes: number;
 
+  @Column({
+    type: 'enum',
+    enum: ['overall', 'per_paper'],
+    default: 'per_paper',
+    name: 'timer_mode',
+  })
+  timerMode: 'overall' | 'per_paper';
+
+  @Column({ type: 'int', default: 0, name: 'overall_duration_minutes' })
+  overallDurationMinutes: number;
+
+  @Column({ type: 'boolean', default: false, name: 'time_carry_over' })
+  timeCarryOver: boolean;
+
+  @Column({ type: 'boolean', default: false, name: 'require_seb' })
+  requireSafeExamBrowser: boolean;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'seb_quit_url' })
+  sebQuitUrl: string | null;
+
+  @Column({ type: 'text', nullable: true, name: 'seb_extra_prohibited' })
+  sebExtraProhibitedProcesses: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

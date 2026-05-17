@@ -6,6 +6,7 @@ import {
   IsDateString,
   Min,
   IsBoolean,
+  IsEnum,
 } from 'class-validator';
 
 export class CreateTestDto {
@@ -55,6 +56,30 @@ export class CreateTestDto {
   @IsNumber()
   @IsOptional()
   codingTimeMinutes?: number;
+
+  @IsEnum(['overall', 'per_paper'])
+  @IsOptional()
+  timerMode?: 'overall' | 'per_paper';
+
+  @IsNumber()
+  @IsOptional()
+  overallDurationMinutes?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  timeCarryOver?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  requireSafeExamBrowser?: boolean;
+
+  @IsString()
+  @IsOptional()
+  sebQuitUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  sebExtraProhibitedProcesses?: string;
 }
 
 export class UpdateTestDto {
@@ -106,4 +131,28 @@ export class UpdateTestDto {
   @IsNumber()
   @IsOptional()
   codingTimeMinutes?: number;
+
+  @IsEnum(['overall', 'per_paper'])
+  @IsOptional()
+  timerMode?: 'overall' | 'per_paper';
+
+  @IsNumber()
+  @IsOptional()
+  overallDurationMinutes?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  timeCarryOver?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  requireSafeExamBrowser?: boolean;
+
+  @IsString()
+  @IsOptional()
+  sebQuitUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  sebExtraProhibitedProcesses?: string;
 }

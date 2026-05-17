@@ -13,6 +13,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../users/user.entity';
+import { ReportAntiCheatDto } from './dto/anti-cheat.dto';
 
 @Controller('results')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,7 +40,7 @@ export class ResultsController {
   reportAntiCheat(
     @Param('testId', ParseUUIDPipe) testId: string,
     @CurrentUser('id') userId: string,
-    @Body() body: { type: 'tab_switch' | 'fullscreen_exit' },
+    @Body() body: ReportAntiCheatDto,
   ) {
     return this.resultsService.reportAntiCheat(userId, testId, body.type);
   }

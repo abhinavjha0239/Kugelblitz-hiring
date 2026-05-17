@@ -1,21 +1,40 @@
 'use client';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { LayoutDashboard, Trophy, LogOut } from 'lucide-react';
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, isLoading, loadFromStorage, logout } = useAuth();
 
   useEffect(() => { loadFromStorage(); }, [loadFromStorage]);
 
   useEffect(() => {
-    if (!isLoading && (!user || user.role !== 'student')) {
+    if (isLoading) return;
+    if (!user || user.role !== 'student') {
       router.push('/login');
+      return;
     }
-  }, [user, isLoading, router]);
+    // Magic-link sessions are scope-locked to a single test. Redirect them
+    // out of the dashboard back to their exam — they're not allowed to see
+    // other tests/results. The hard gate is the backend InviteScopeGuard;
+    // this is just so they don't see a partially-loaded broken dashboard.
+    //
+    // EXCEPTION: their own results page is allowed since SEB lands them
+    // there after submit (?seb=quit). Match exactly /student/results/<id>;
+    // anything else under /student/* (dashboard, generic results list,
+    // a different testId) bounces back to their exam.
+    if (user.inviteScope?.lockedToTest) {
+      const allowedResult = `/student/results/${user.inviteScope.testId}`;
+      if (pathname === allowedResult || pathname?.startsWith(`${allowedResult}/`) || pathname?.startsWith(`${allowedResult}?`)) {
+        return;
+      }
+      router.replace(`/test/${user.inviteScope.testId}`);
+    }
+  }, [user, isLoading, router, pathname]);
 
   if (isLoading || !user) {
     return (

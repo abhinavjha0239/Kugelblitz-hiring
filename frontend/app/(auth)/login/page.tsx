@@ -103,16 +103,8 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Demo accounts */}
-        <div className="mt-5 glass rounded-2xl p-5">
-          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Demo Accounts</p>
-          <div className="space-y-1.5 text-xs">
-            <p className="text-slate-400">Admin: <span className="text-slate-300 font-mono">admin@codeassess.com</span> / <span className="text-slate-300 font-mono">admin123</span></p>
-            <p className="text-slate-400">Student: <span className="text-slate-300 font-mono">student@codeassess.com</span> / <span className="text-slate-300 font-mono">student123</span></p>
-          </div>
-        </div>
 
-        {/* Footer */}
+{/* Footer */}
         <p className="text-center text-[11px] text-slate-600 mt-8">Powered by Kugelblitz Technologies</p>
       </div>
     </div>

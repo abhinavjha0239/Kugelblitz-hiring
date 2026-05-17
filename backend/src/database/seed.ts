@@ -11,6 +11,12 @@ import { TestParticipation } from '../results/test-participation.entity';
 import { McqResponse } from '../test-session/mcq-response.entity';
 import { ViolationLog } from '../test-session/violation-log.entity';
 import { ActionLog } from '../test-session/action-log.entity';
+import { Paper } from '../paper/paper.entity';
+import { PaperQuestion } from '../paper/paper-question.entity';
+import { StudentPaperSession } from '../paper/student-paper-session.entity';
+import { PdfUpload } from '../pdf-ingestion/pdf-upload.entity';
+import { MagicLink } from '../magic-link/magic-link.entity';
+import { ExamSet } from '../exam-set/exam-set.entity';
 dotenv.config();
 
 const AppDataSource = new DataSource({
@@ -21,7 +27,7 @@ const AppDataSource = new DataSource({
   password: process.env.DB_PASSWORD || 'codeassess_secret',
   database: process.env.DB_NAME || 'codeassess',
   charset: 'utf8mb4',
-  entities: [User, PasswordReset, Test, Question, TestCase, Submission, TestParticipation, McqResponse, ViolationLog, ActionLog],
+  entities: [User, PasswordReset, Test, Question, TestCase, Submission, TestParticipation, McqResponse, ViolationLog, ActionLog, Paper, PaperQuestion, StudentPaperSession, PdfUpload, MagicLink, ExamSet],
   synchronize: true,
 });
 
@@ -33,6 +39,8 @@ async function seed() {
   const testsRepo = AppDataSource.getRepository('tests');
   const questionsRepo = AppDataSource.getRepository('questions');
   const testCasesRepo = AppDataSource.getRepository('test_cases');
+  const papersRepo = AppDataSource.getRepository('papers');
+  const paperQuestionsRepo = AppDataSource.getRepository('paper_questions');
 
   const existingAdmin = await usersRepo.findOne({ where: { email: 'admin@codeassess.com' } });
   if (!existingAdmin) {
@@ -41,11 +49,11 @@ async function seed() {
 
     await usersRepo.save({
       email: 'admin@codeassess.com', password: adminPassword,
-      firstName: 'Admin', lastName: 'User', role: 'admin',
+      firstName: 'Admin', lastName: 'User', role: 'admin', profileComplete: true,
     });
     await usersRepo.save({
       email: 'student@codeassess.com', password: studentPassword,
-      firstName: 'Student', lastName: 'User', role: 'student',
+      firstName: 'Student', lastName: 'User', role: 'student', profileComplete: true,
     });
     console.log('Users created.');
   }
@@ -63,7 +71,7 @@ async function seed() {
   // ─── SECTION-BASED TEST ─────────────────────────────────────
   const test = await testsRepo.save({
     title: 'Full Stack Developer Assessment',
-    description: 'A comprehensive assessment with MCQ aptitude/reasoning (Section 1) followed by coding challenges (Section 2). You must score at least 40% on MCQ to unlock coding.',
+    description: 'A comprehensive assessment with MCQ aptitude/reasoning (Paper 1) followed by coding challenges (Paper 2). You must score at least 40% on MCQ to unlock coding.',
     durationMinutes: 90,
     isActive: true,
     createdById: (admin as any).id,
@@ -74,9 +82,38 @@ async function seed() {
     negativeMarkValue: 0.5,
     mcqTimeMinutes: 30,
     codingTimeMinutes: 60,
+    timerMode: 'per_paper',
+    overallDurationMinutes: 90,
+    timeCarryOver: false,
   });
 
   const testId = (test as any).id;
+
+  // ─── PAPERS (multi-paper config) ────────────────────────────
+  const paper1 = await papersRepo.save({
+    examId: testId,
+    name: 'Paper 1 — MCQ Aptitude & Reasoning',
+    order: 1,
+    totalQuestions: 10,
+    durationMinutes: 30,
+    passRequired: true,
+    cutoffType: 'percent',
+    cutoffValue: 40,
+    cutoffFailBehavior: 'lock_next',
+    totalMarks: 50,
+  });
+  const paper2 = await papersRepo.save({
+    examId: testId,
+    name: 'Paper 2 — Coding Challenges',
+    order: 2,
+    totalQuestions: 3,
+    durationMinutes: 60,
+    passRequired: false,
+    cutoffType: 'none',
+    cutoffValue: 0,
+    cutoffFailBehavior: 'none',
+    totalMarks: 50,
+  });
 
   // ════════════════════════════════════════════════════════════
   // SECTION 1: MCQ Questions (Aptitude + Reasoning + Tech)
@@ -185,10 +222,15 @@ async function seed() {
     },
   ];
 
+  const savedMcqs: any[] = [];
   for (const q of mcqQuestions) {
-    await questionsRepo.save({ testId, type: 'mcq', ...q });
+    const saved = await questionsRepo.save({ testId, type: 'mcq', ...q });
+    savedMcqs.push(saved);
   }
-  console.log(`Created ${mcqQuestions.length} MCQ questions (Section 1, 50 marks total)`);
+  for (const m of savedMcqs) {
+    await paperQuestionsRepo.save({ paperId: (paper1 as any).id, questionId: (m as any).id });
+  }
+  console.log(`Created ${mcqQuestions.length} MCQ questions (Paper 1, 50 marks total)`);
 
   // ════════════════════════════════════════════════════════════
   // SECTION 2: Coding Questions
@@ -238,13 +280,17 @@ async function seed() {
     { questionId: (q3 as any).id, input: 'one two three four five', expectedOutput: 'five four three two one', isHidden: true },
   ]);
 
-  console.log('Created 3 Coding questions (Section 2, 50 marks total)');
+  for (const q of [q1, q2, q3]) {
+    await paperQuestionsRepo.save({ paperId: (paper2 as any).id, questionId: (q as any).id });
+  }
+  console.log('Created 3 Coding questions (Paper 2, 50 marks total)');
   console.log('');
   console.log('=== SEED COMPLETE ===');
   console.log('Test: Full Stack Developer Assessment');
-  console.log('  Section 1 (MCQ):    10 questions, 50 marks, 40% cutoff, -0.5 negative marking');
-  console.log('  Section 2 (Coding): 3 questions, 50 marks (unlocked after MCQ cutoff)');
-  console.log('  Total: 100 marks, 90 minutes');
+  console.log('  Paper 1 (MCQ):    10 questions, 50 marks, cutoff=percent 40%, fail=lock_next');
+  console.log('  Paper 2 (Coding): 3 questions,  50 marks, no cutoff (unlocks if Paper 1 passes)');
+  console.log('  Timer mode: per_paper, time carry-over: off');
+  console.log('  Total: 100 marks, 90 minutes (30 + 60)');
   console.log('');
   console.log('Admin:   admin@codeassess.com / admin123');
   console.log('Student: student@codeassess.com / student123');

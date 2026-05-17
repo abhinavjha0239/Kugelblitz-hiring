@@ -37,20 +37,24 @@ export default function StudentDashboard() {
       try {
         const activeTests = await testsService.getActive();
         setTests(activeTests);
+        // Fetch participation + paper status in parallel — was 2N sequential round-trips.
+        const results = await Promise.all(
+          activeTests.map(async (t) => {
+            const [p, s] = await Promise.all([
+              resultsService.getParticipation(t.id).catch(() => null),
+              testSessionService.getExamStatus(t.id).catch(() => null) as Promise<any>,
+            ]);
+            return { id: t.id, p, s };
+          }),
+        );
         const parts: Record<string, any> = {};
-        for (const t of activeTests) {
-          try {
-            const p = await resultsService.getParticipation(t.id);
-            if (p) parts[t.id] = p;
-          } catch {}
-          try {
-            const examStatus: any = await testSessionService.getExamStatus(t.id);
-            if (Array.isArray(examStatus?.papers) && examStatus.papers.length > 0) {
-              setPaperStatusByTest((prev) => ({ ...prev, [t.id]: examStatus.papers }));
-            }
-          } catch {}
+        const statuses: Record<string, ExamPaperStatus[]> = {};
+        for (const { id, p, s } of results) {
+          if (p) parts[id] = p;
+          if (Array.isArray(s?.papers) && s.papers.length > 0) statuses[id] = s.papers;
         }
         setParticipations(parts);
+        setPaperStatusByTest(statuses);
       } catch (err: any) { toast.error(err.message); }
       finally { setLoading(false); }
     };
@@ -115,6 +119,19 @@ export default function StudentDashboard() {
     return Math.round((Number(p.totalScore) / totalMarks) * 100);
   };
 
+  // Compute "attempted total" — only sum totalMarks for papers actually submitted.
+  // If exam ended with some papers locked_fail (cutoff failed), those papers don't count toward the denominator.
+  const getAttemptedDenominator = (testId: string, fallbackTotal: number): { denom: number; partial: boolean } => {
+    const papers = paperStatusByTest[testId];
+    if (!papers || papers.length === 0) return { denom: fallbackTotal, partial: false };
+    const submitted = papers.filter((p) => p.status === 'submitted');
+    if (submitted.length === 0) return { denom: fallbackTotal, partial: false };
+    const submittedTotal = submitted.reduce((s, p) => s + Number(p.totalMarks || 0), 0);
+    if (submittedTotal === 0) return { denom: fallbackTotal, partial: false };
+    const partial = submitted.length < papers.length;
+    return { denom: submittedTotal, partial };
+  };
+
   // ─── System Check ──────────────────────────────────────
   const runSystemCheck = useCallback(async () => {
     const browser = typeof document !== 'undefined' && typeof document.createElement === 'function';
@@ -164,52 +181,46 @@ export default function StudentDashboard() {
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
 
       {/* ═══ WELCOME HEADER ════════════════════════════════ */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-        <div>
-          <p className="text-slate-500 text-sm mb-1">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'},</p>
-          <h1 className="text-2xl lg:text-3xl font-bold text-white">
-            {user?.firstName} {user?.lastName}
-          </h1>
-          <p className="text-slate-400 mt-1 text-sm">
-            {stats.completed === 0
-              ? 'Start your first assessment to begin tracking progress'
-              : stats.inProgress > 0
-                ? `You have ${stats.inProgress} test in progress`
-                : `${stats.completed} test${stats.completed > 1 ? 's' : ''} completed. Keep going!`}
-          </p>
-        </div>
-        {!activeTest && tests.length > 0 && (
-          <button
-            onClick={() => { const t = tests.find((t) => getStatus(t.id) === 'not_started'); if (t) setPreviewTest(t); }}
-            className="shrink-0 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-semibold py-2.5 px-6 rounded-xl transition-all duration-200 flex items-center gap-2 shadow-lg shadow-blue-500/15 hover:shadow-blue-500/25 text-sm"
-          >
-            <Sparkles className="w-4 h-4" /> Start New Test
-          </button>
-        )}
+      <div>
+        <p className="text-slate-500 text-sm mb-1">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'},</p>
+        <h1 className="text-2xl lg:text-3xl font-bold text-white">
+          {user?.firstName} {user?.lastName}
+        </h1>
+        <p className="text-slate-400 mt-1 text-sm">
+          {stats.inProgress > 0
+            ? 'You have an assessment in progress — resume below.'
+            : tests.length === 0
+              ? 'No assessments assigned to you yet. Check back when your recruiter sends an invite.'
+              : stats.completed === tests.length
+                ? `${stats.completed} assessment${stats.completed > 1 ? 's' : ''} completed.`
+                : `${tests.length - stats.completed} assessment${tests.length - stats.completed > 1 ? 's' : ''} ready for you.`}
+        </p>
       </div>
 
       {/* ═══ STAT CARDS ════════════════════════════════════ */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-        {[
-          { icon: Target, label: 'Available', value: stats.total, color: 'blue' },
-          { icon: Trophy, label: 'Completed', value: stats.completed, color: 'emerald' },
-          { icon: BarChart3, label: 'Avg Score', value: stats.avgScore === -1 ? null : `${stats.avgScore}%`, color: 'amber', empty: 'No attempts' },
-          { icon: TrendingUp, label: 'Best Score', value: stats.completed > 0 ? `${stats.bestScore}%` : null, color: 'purple', empty: 'No attempts' },
-        ].map((s, i) => (
-          <div key={i} className="relative overflow-hidden glass rounded-2xl p-4 lg:p-5 hover:border-slate-600/40 transition-all duration-300 group">
-            <div className={`absolute -top-4 -right-4 w-16 h-16 bg-${s.color}-500/5 rounded-full group-hover:bg-${s.color}-500/10 transition-colors`} />
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 bg-${s.color}-500/10 rounded-xl flex items-center justify-center shrink-0`}>
-                <s.icon className={`w-5 h-5 text-${s.color}-400`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xl lg:text-2xl font-bold text-white truncate">{s.value ?? s.empty}</p>
-                <p className="text-[11px] text-slate-500">{s.label}</p>
+      {tests.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+          {[
+            { icon: Target, label: 'Assigned', value: String(stats.total), color: 'blue' },
+            { icon: Trophy, label: 'Completed', value: String(stats.completed), color: 'emerald' },
+            { icon: BarChart3, label: 'Avg score', value: stats.avgScore === -1 ? '—' : `${stats.avgScore}%`, color: 'amber' },
+            { icon: TrendingUp, label: 'Best score', value: stats.completed > 0 ? `${stats.bestScore}%` : '—', color: 'purple' },
+          ].map((s, i) => (
+            <div key={i} className="relative overflow-hidden glass rounded-2xl p-4 lg:p-5 hover:border-slate-600/40 transition-all duration-300 group">
+              <div className={`absolute -top-4 -right-4 w-16 h-16 bg-${s.color}-500/5 rounded-full group-hover:bg-${s.color}-500/10 transition-colors`} />
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 bg-${s.color}-500/10 rounded-xl flex items-center justify-center shrink-0`}>
+                  <s.icon className={`w-5 h-5 text-${s.color}-400`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xl lg:text-2xl font-bold text-white truncate">{s.value}</p>
+                  <p className="text-[11px] text-slate-500 uppercase tracking-wider">{s.label}</p>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* ═══ PERFORMANCE INSIGHTS (if completed tests) ════ */}
       {stats.completed > 0 && (
@@ -282,55 +293,72 @@ export default function StudentDashboard() {
         </div>
       )}
 
-      {/* ═══ TABS + SEARCH + FILTER ═══════════════════════ */}
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-0.5 glass rounded-xl p-1">
-            {([
-              { key: 'all' as TabKey, label: 'All Tests', count: tests.length },
-              { key: 'active' as TabKey, label: 'Active', count: tests.filter((t) => { const s = getStatus(t.id); return s === 'not_started' || s === 'in_progress'; }).length },
-              { key: 'completed' as TabKey, label: 'Completed', count: stats.completed },
-            ]).map((tab) => (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  activeTab === tab.key ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}>
-                {tab.label}
-                <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? 'bg-white/20' : 'bg-slate-700/50'}`}>{tab.count}</span>
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
-              <input type="text" placeholder="Search tests..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-slate-900/50 border border-slate-700/40 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30 w-48 lg:w-64 transition-all" />
+      {/* ═══ TABS + SEARCH + FILTER (only meaningful when many tests) ═══ */}
+      {tests.length > 1 && (
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-0.5 glass rounded-xl p-1">
+              {([
+                { key: 'all' as TabKey, label: 'All', count: tests.length },
+                { key: 'active' as TabKey, label: 'Active', count: tests.filter((t) => { const s = getStatus(t.id); return s === 'not_started' || s === 'in_progress'; }).length },
+                { key: 'completed' as TabKey, label: 'Completed', count: stats.completed },
+              ]).map((tab) => (
+                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    activeTab === tab.key ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                  }`}>
+                  {tab.label}
+                  <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? 'bg-white/20' : 'bg-slate-700/50'}`}>{tab.count}</span>
+                </button>
+              ))}
             </div>
-            <button onClick={() => setShowFilters(!showFilters)}
-              className={`p-2.5 rounded-xl border transition-all ${showFilters || durationFilter !== 'all' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-slate-900/50 border-slate-700/40 text-slate-500 hover:text-white'}`}>
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
+            {tests.length >= 5 && (
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+                  <input type="text" placeholder="Search tests..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-slate-900/50 border border-slate-700/40 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30 w-48 lg:w-64 transition-all" />
+                </div>
+                <button onClick={() => setShowFilters(!showFilters)}
+                  className={`p-2.5 rounded-xl border transition-all ${showFilters || durationFilter !== 'all' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-slate-900/50 border-slate-700/40 text-slate-500 hover:text-white'}`}>
+                  <SlidersHorizontal className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
+          {showFilters && (
+            <div className="flex items-center gap-3 glass rounded-xl p-3">
+              <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Duration:</span>
+              {[{ key: 'all', label: 'All' }, { key: 'short', label: '< 45m' }, { key: 'medium', label: '45-90m' }, { key: 'long', label: '90m+' }].map((f) => (
+                <button key={f.key} onClick={() => setDurationFilter(f.key)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${durationFilter === f.key ? 'bg-blue-600 text-white' : 'bg-slate-800/40 text-slate-400 hover:text-white'}`}>{f.label}</button>
+              ))}
+            </div>
+          )}
         </div>
-        {showFilters && (
-          <div className="flex items-center gap-3 glass rounded-xl p-3">
-            <span className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Duration:</span>
-            {[{ key: 'all', label: 'All' }, { key: 'short', label: '< 45m' }, { key: 'medium', label: '45-90m' }, { key: 'long', label: '90m+' }].map((f) => (
-              <button key={f.key} onClick={() => setDurationFilter(f.key)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${durationFilter === f.key ? 'bg-blue-600 text-white' : 'bg-slate-800/40 text-slate-400 hover:text-white'}`}>{f.label}</button>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
+
+      {/* Section heading when there's exactly one test (no tabs shown) */}
+      {tests.length > 0 && tests.length <= 1 && !activeTest && (
+        <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Your assessment</h2>
+      )}
 
       {/* ═══ TEST CARDS ════════════════════════════════════ */}
       {filteredTests.length === 0 ? (
-        <div className="text-center py-20">
+        <div className="text-center py-20 glass rounded-2xl border-dashed">
           <div className="w-16 h-16 bg-slate-800/40 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <FileText className="w-8 h-8 text-slate-600" />
           </div>
-          <p className="text-slate-400 text-lg font-medium">No tests found</p>
-          <p className="text-slate-600 text-sm mt-1">{searchQuery ? 'Try a different search term' : 'Check back later for new assessments'}</p>
+          <p className="text-slate-300 text-lg font-medium">
+            {tests.length === 0 ? 'No assessments yet' : 'Nothing matches your filters'}
+          </p>
+          <p className="text-slate-500 text-sm mt-1 max-w-sm mx-auto">
+            {tests.length === 0
+              ? 'Your recruiter will email you a magic link when an assessment is ready. The link will sign you in directly — no password needed.'
+              : searchQuery
+                ? 'Try a different search term, or clear filters.'
+                : activeTab === 'completed' ? 'You haven\'t completed any tests yet.' : 'Switch tabs to see other tests.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-5">
@@ -392,15 +420,27 @@ export default function StudentDashboard() {
                   {/* Score + Proctoring for completed */}
                   {isCompleted && p && (
                     <div className="mb-4 space-y-3">
-                      <div>
-                        <div className="flex justify-between text-xs mb-1.5">
-                          <span className="text-slate-500">Score</span>
-                          <span className="font-mono font-semibold text-emerald-400">{Number(p.totalScore).toFixed(0)}/{test.totalMarks} ({scorePercent}%)</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-800/60 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all duration-700 ${scorePercent >= 70 ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : scorePercent >= 40 ? 'bg-gradient-to-r from-amber-500 to-amber-400' : 'bg-gradient-to-r from-red-500 to-red-400'}`} style={{ width: `${scorePercent}%` }} />
-                        </div>
-                      </div>
+                      {(() => {
+                        const { denom, partial } = getAttemptedDenominator(test.id, test.totalMarks);
+                        const score = Number(p.totalScore);
+                        const pct = denom > 0 ? Math.round((score / denom) * 100) : 0;
+                        return (
+                          <div>
+                            <div className="flex justify-between text-xs mb-1.5">
+                              <span className="text-slate-500">Score{partial && <span className="ml-1 text-amber-400">(attempted papers only)</span>}</span>
+                              <span className="font-mono font-semibold text-emerald-400">{score.toFixed(0)}/{denom} ({pct}%)</span>
+                            </div>
+                            <div className="h-1.5 bg-slate-800/60 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-700 ${pct >= 70 ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : pct >= 40 ? 'bg-gradient-to-r from-amber-500 to-amber-400' : 'bg-gradient-to-r from-red-500 to-red-400'}`} style={{ width: `${pct}%` }} />
+                            </div>
+                            {partial && (
+                              <p className="text-[10px] text-slate-500 mt-1">
+                                Some papers locked due to cutoff — denominator excludes them.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-slate-600">MCQ: <span className="text-slate-400">{Number(p.mcqScore).toFixed(0)}</span></span>
                         <span className="text-slate-600">Coding: <span className="text-slate-400">{Number(p.codingScore).toFixed(0)}</span></span>

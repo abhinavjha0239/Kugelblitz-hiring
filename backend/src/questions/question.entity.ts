@@ -13,6 +13,7 @@ import { Test } from '../tests/test.entity';
 import { TestCase } from './test-case.entity';
 import { Submission } from '../submissions/submission.entity';
 import { PaperQuestion } from '../paper/paper-question.entity';
+import { decimalTransformer } from '../common/db/decimal-transformer';
 
 export enum QuestionType {
   CODING = 'coding',
@@ -52,13 +53,16 @@ export class Question {
   @Column({ type: 'json', nullable: true, name: 'allowed_languages' })
   allowedLanguages: number[];
 
+  @Column({ type: 'json', nullable: true, name: 'image_urls' })
+  imageUrls: string[] | null;
+
   @Column({ type: 'json', nullable: true, name: 'mcq_options' })
-  mcqOptions: { id: string; text: string }[] | null;
+  mcqOptions: { id: string; text: string; imageUrl?: string }[] | null;
 
   @Column({ type: 'varchar', nullable: true, name: 'mcq_correct_answer' })
   mcqCorrectAnswer: string | null;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, name: 'negative_marks' })
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, name: 'negative_marks', transformer: decimalTransformer })
   negativeMarks: number;
 
   // Section: 1 = MCQ section, 2 = Coding section

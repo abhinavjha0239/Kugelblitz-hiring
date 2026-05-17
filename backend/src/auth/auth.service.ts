@@ -50,6 +50,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (!user.password) {
+      throw new UnauthorizedException('This account uses magic-link login. Please use the link sent to your email.');
+    }
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -97,6 +100,9 @@ export class AuthService {
     const user = await this.usersService.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
+    if (!user.password) {
+      throw new BadRequestException('This account has no password set. Use the password reset flow.');
+    }
     const isValid = await bcrypt.compare(currentPassword, user.password);
     if (!isValid) throw new BadRequestException('Current password is incorrect');
 

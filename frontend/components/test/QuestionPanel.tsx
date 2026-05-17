@@ -1,6 +1,7 @@
 'use client';
 import { Question } from '@/types';
 import { Code, ListChecks, FileText } from 'lucide-react';
+import { uploadsService } from '@/services/uploads.service';
 
 interface Props {
   question: Question;
@@ -31,6 +32,19 @@ export default function QuestionPanel({ question, mcqAnswer, onMcqAnswer }: Prop
         })}
       </div>
 
+      {question.imageUrls && question.imageUrls.length > 0 && (
+        <div className="space-y-3 mb-6">
+          {question.imageUrls.map((url, i) => (
+            <img
+              key={i}
+              src={uploadsService.toAbsolute(url)}
+              alt={`Question image ${i + 1}`}
+              className="max-w-full rounded border border-dark-700"
+            />
+          ))}
+        </div>
+      )}
+
       {question.type === 'mcq' && question.mcqOptions && (
         <div className="space-y-2 mb-4">
           <p className="text-sm font-medium text-dark-300 mb-3">Select your answer:</p>
@@ -48,10 +62,19 @@ export default function QuestionPanel({ question, mcqAnswer, onMcqAnswer }: Prop
                 name="mcq"
                 checked={mcqAnswer === opt.id}
                 onChange={() => onMcqAnswer?.(opt.id)}
-                className="w-4 h-4 text-accent"
+                className="w-4 h-4 text-accent flex-shrink-0"
               />
-              <span className="font-mono text-sm mr-2">{opt.id.toUpperCase()}.</span>
-              <span className="text-sm">{opt.text}</span>
+              <span className="font-mono text-sm flex-shrink-0">{opt.id.toUpperCase()}.</span>
+              <div className="flex-1 flex items-center gap-3">
+                {opt.text && <span className="text-sm">{opt.text}</span>}
+                {opt.imageUrl && (
+                  <img
+                    src={uploadsService.toAbsolute(opt.imageUrl)}
+                    alt={`Option ${opt.id}`}
+                    className="max-h-32 rounded border border-dark-700"
+                  />
+                )}
+              </div>
             </label>
           ))}
         </div>

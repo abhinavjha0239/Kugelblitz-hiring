@@ -18,13 +18,18 @@ type PaperSessionCachePayload = {
     mcqOptions: { id: string; text: string }[] | null;
   }>;
   answerKey: Record<string, string | null>;
+  // Maps per-student scrambled option IDs back to real option IDs for scoring.
+  // Present for sessions created after the option-scrambling feature was deployed;
+  // absent for legacy sessions (submitPaper falls back to literal comparison).
+  optionIdMap?: Record<string, string>;
 };
 
 @Injectable()
 export class PaperSessionCacheService {
   private readonly logger = new Logger(PaperSessionCacheService.name);
   private readonly redis: Redis;
-  private readonly ttlSeconds = 60 * 60 * 12;
+  // 24h covers long exam windows + reconnects without losing the seeded question order.
+  private readonly ttlSeconds = 60 * 60 * 24;
 
   constructor(private readonly configService: ConfigService) {
     this.redis = new Redis({
@@ -38,9 +43,16 @@ export class PaperSessionCacheService {
   }
 
   async getPaperSession(userId: string, paperId: string): Promise<PaperSessionCachePayload | null> {
-    const raw = await this.redis.get(this.paperSessionKey(userId, paperId));
+    const key = this.paperSessionKey(userId, paperId);
+    const raw = await this.redis.get(key);
     if (!raw) return null;
-    return JSON.parse(raw) as PaperSessionCachePayload;
+    try {
+      return JSON.parse(raw) as PaperSessionCachePayload;
+    } catch (err: any) {
+      this.logger.warn(`Cache miss (parse error) ${key}: ${err.message}`);
+      await this.redis.del(key);
+      return null;
+    }
   }
 
   async setPaperSession(payload: PaperSessionCachePayload): Promise<void> {
@@ -53,9 +65,16 @@ export class PaperSessionCacheService {
   }
 
   async getAutosavedAnswers(userId: string, paperId: string): Promise<Record<string, string>> {
-    const raw = await this.redis.get(this.paperAnswersKey(userId, paperId));
+    const key = this.paperAnswersKey(userId, paperId);
+    const raw = await this.redis.get(key);
     if (!raw) return {};
-    return JSON.parse(raw) as Record<string, string>;
+    try {
+      return JSON.parse(raw) as Record<string, string>;
+    } catch (err: any) {
+      this.logger.warn(`Cache miss (parse error) ${key}: ${err.message}`);
+      await this.redis.del(key);
+      return {};
+    }
   }
 
   async setAutosavedAnswers(userId: string, paperId: string, answers: Record<string, string>): Promise<void> {

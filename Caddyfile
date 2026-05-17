@@ -1,0 +1,52 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	# ─── Security response headers ────────────────────────────────
+	# Apply to every response (frontend HTML AND backend API). Caddy v2's
+	# `header NAME "value"` REPLACES any upstream value, so this is the
+	# single source of truth at the edge. Helmet (in NestJS) sets some of
+	# these on /api/* responses; the Caddy value wins on the wire.
+	header {
+		# 1-year HSTS. No `preload` because we don't control the nip.io
+		# eTLD+1 — the preload list won't accept us anyway.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# Stop browsers from MIME-sniffing responses. Defends against any
+		# case where a magic-byte-mismatched file slips through upload.
+		X-Content-Type-Options "nosniff"
+		# Forbid this site from being framed. Exam/admin pages have no
+		# legitimate need to be embedded; blocking defeats clickjacking.
+		X-Frame-Options "DENY"
+		# Don't leak the URL of the previous page across origins.
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Drop access to features we never use. If XSS ever escalates,
+		# these are off — no geo / mic / cam / payment / FLoC cohort.
+		Permissions-Policy "geolocation=(), microphone=(), camera=(), usb=(), payment=(), interest-cohort=(), accelerometer=(), gyroscope=(), magnetometer=()"
+		# Isolate window.opener to same origin — defeats opener-based
+		# pivot attacks if a candidate ever opens an external link.
+		Cross-Origin-Opener-Policy "same-origin"
+		# Don't fingerprint the server software.
+		-Server
+	}
+
+	# Backend API + WebSocket — pass through to NestJS
+	@api path /api/* /socket.io/* /uploads/*
+	handle @api {
+		reverse_proxy backend:4000 {
+			# WebSocket-friendly: long timeouts, proper upgrade headers
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# Everything else → Next.js frontend
+	handle {
+		reverse_proxy frontend:3000 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+}

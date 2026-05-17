@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Test } from '../tests/test.entity';
+import { decimalTransformer } from '../common/db/decimal-transformer';
 
 export enum ParticipationStatus {
   IN_PROGRESS = 'in_progress',
@@ -50,7 +51,7 @@ export class TestParticipation {
   @Column({ type: 'timestamp', nullable: true, name: 'submitted_at' })
   submittedAt: Date | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'total_score' })
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'total_score', transformer: decimalTransformer })
   totalScore: number;
 
   @Column({ default: 0, name: 'tab_switch_count' })
@@ -67,10 +68,10 @@ export class TestParticipation {
   status: ParticipationStatus;
 
   // Section tracking
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'mcq_score' })
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'mcq_score', transformer: decimalTransformer })
   mcqScore: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'coding_score' })
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'coding_score', transformer: decimalTransformer })
   codingScore: number;
 
   @Column({ default: false, name: 'mcq_submitted' })
@@ -84,6 +85,9 @@ export class TestParticipation {
 
   @Column({ type: 'varchar', default: 'mcq', name: 'current_section' })
   currentSection: string;
+
+  @Column({ type: 'varchar', length: 36, nullable: true, name: 'set_id' })
+  setId: string | null;
 
   @Column({ default: 0, name: 'risk_score' })
   riskScore: number;
